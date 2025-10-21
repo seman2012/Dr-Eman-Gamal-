@@ -341,3 +341,61 @@ cd "$OUT/.." && zip -r "$ZIPOUT" "$(basename "$OUT")" >/dev/null
 
 echo "Created ZIP: $ZIPOUT"
 echo "Copy the ZIP to your PC and upload to GitHub or unzip and inspect."
+storePassword=YOUR_STORE_PASSWORD
+keyPassword=YOUR_KEY_PASSWORD
+keyAlias=dr_eman_key
+storeFile=/absolute/or/relative/path/to/my-release-key.jks 
+def keystorePropertiesFile = rootProject.file("key.properties")
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
+android {
+    ...
+    signingConfigs {
+        release {
+            if (keystorePropertiesFile.exists()) {
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled false // أو true مع proguard rules إن أردت
+            // proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+# 1) توقيع
+apksigner sign --ks ~/my-release-key.jks --out app-release-signed.apk app-release-unsigned.apk
+
+# 2) فحص التوقيع
+apksigner verify app-release-signed.apk
+
+# 3) محاذاة (zipalign) — اختياري لكن موصى به
+zipalign -v -p 4 app-release-signed.apk app-release-aligned.apk
+# تأكد من أنك داخل جذر المشروع Flutter حيث يوجد android/ pubspec.yaml
+cd "$PROJECT_DIR"
+
+# التأكد من الأدوات
+command -v flutter >/dev/null || { echo "flutter not found"; exit 1; }
+
+# تحميل الحزم
+flutter pub get
+
+# بناء release APK (سيستخدم signingConfig الموجود في android/app/build.gradle)
+flutter build apk --release
+
+# مسار الناتج
+APK_PATH="$PROJECT_DIR/build/app/outputs/flutter-apk/app-release.apk"
+if [[ -f "$APK_PATH" ]]; then
+  cp "$APK_PATH" "$OUT/"
+else
+  echo "APK not found: $APK_PATH" >&2
+  exit 1
+fi
